@@ -11,7 +11,7 @@ if (!token) {
 }
 
 // Create a bot that uses 'polling' to fetch new updates
-const bot = new TelegramBot(token, {polling: true});
+const bot = new TelegramBot(token, { polling: true });
 
 // Keep track of the last user who sent a message so we know who to reply to
 let lastChatId = null;
@@ -37,7 +37,7 @@ rl.on('line', (input) => {
         console.log("No messages received yet. Cannot reply to anyone.");
         return;
     }
-    
+
     // Send the typed message back to the last user
     bot.sendMessage(lastChatId, input)
         .then(() => {
@@ -47,6 +47,6 @@ rl.on('line', (input) => {
             console.error(`[Error] Failed to send message:`, error.message);
         });
 });
-
+// harshal this side
 console.log("Bot backend is running...");
 console.log("Waiting for messages from Telegram...");
