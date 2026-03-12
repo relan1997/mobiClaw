@@ -1,52 +1,57 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
-const readline = require('readline');
+const { processMessage } = require('./ai/agent');
 
-// Replace the value of 'BOT_TOKEN' in the .env file with your Telegram Bot token.
 const token = process.env.BOT_TOKEN;
+const allowedChatsStr = process.env.ALLOWED_CHAT_IDS || '';
+// Parse comma-separated chat IDs if provided in .env
+const allowedChats = allowedChatsStr.split(',').map(id => id.trim()).filter(id => id.length > 0);
 
 if (!token) {
     console.error("Error: BOT_TOKEN is not set in the .env file.");
     process.exit(1);
 }
 
-// Create a bot that uses 'polling' to fetch new updates
 const bot = new TelegramBot(token, {polling: true});
 
-// Keep track of the last user who sent a message so we know who to reply to
-let lastChatId = null;
-
-// Sets up a listener for messages from any chat
-bot.on('message', (msg) => {
+bot.on('message', async (msg) => {
+    // console.log("msg is : ",msg);
     const chatId = msg.chat.id;
-    lastChatId = chatId;
     const name = msg.from.first_name || msg.from.username || "Unknown User";
 
-    console.log(`\n[Telegram] Message from ${name}: ${msg.text}`);
-    console.log(`(Reply by typing below and pressing Enter...)`);
-});
+    console.log(`\n[Telegram] Message from ${name} (${chatId}): ${msg.text}`);
 
-// Set up readline interface to get input from the terminal
-const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout
-});
+    // await bot.sendMessage(chatId, "Hello");
+    // console.log(`[Sent] Reply successfully sent to Telegram.`);
 
-rl.on('line', (input) => {
-    if (!lastChatId) {
-        console.log("No messages received yet. Cannot reply to anyone.");
-        return;
-    }
+    // return;
+
+    // Authorization Check: Only allow listed chat IDs (if list is not empty)
+    // if (allowedChats.length > 0 && !allowedChats.includes(chatId.toString())) {
+    //     console.warn(`[Auth] Unauthorized access attempt from ${name} (chatId: ${chatId})`);
+    //     return;
+    // }
     
-    // Send the typed message back to the last user
-    bot.sendMessage(lastChatId, input)
-        .then(() => {
+    if (!msg.text) return;
+
+    // Show 'typing...' status to the user
+    bot.sendChatAction(chatId, 'typing').catch(() => {});
+
+    try {
+        const result = await processMessage(msg.text);
+
+        if (typeof result === 'object' && result.__isFileResponse) {
+            await bot.sendDocument(chatId, result.filePath);
+            console.log(`[Sent] File successfully sent: ${result.filePath}`);
+        } else {
+            await bot.sendMessage(chatId, result);
             console.log(`[Sent] Reply successfully sent to Telegram.`);
-        })
-        .catch((error) => {
-            console.error(`[Error] Failed to send message:`, error.message);
-        });
+        }
+    } catch (error) {
+        console.error(`[Error] Failed to process/send message:`, error);
+        bot.sendMessage(chatId, `❌ System Error: ${error.message}`).catch(console.error);
+    }
 });
 
-console.log("Bot backend is running...");
-console.log("Waiting for messages from Telegram...");
+console.log("MobiClaw bot backend is running...");
+console.log("Waiting for messages from authorized Telegram users...");
