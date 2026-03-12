@@ -47,6 +47,6 @@ rl.on('line', (input) => {
             console.error(`[Error] Failed to send message:`, error.message);
         });
 });
-//. 
+//. gut
 console.log("Bot backend is running...");
 console.log("Waiting for messages from Telegram...");
