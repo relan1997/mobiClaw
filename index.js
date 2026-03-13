@@ -19,6 +19,9 @@ if (!token) {
 
 const bot = new TelegramBot(token, { polling: true });
 
+// In-memory chat history per chat (keyed by chatId)
+const chatHistories = new Map();
+
 /* ---------------- FILE SENDER ---------------- */
 
 async function sendFileToTelegram(bot, chatId, fileInfo) {
@@ -41,65 +44,76 @@ async function sendFileToTelegram(bot, chatId, fileInfo) {
 /* ---------------- MAIN MESSAGE HANDLER ---------------- */
 
 bot.on('message', async (msg) => {
-
     const chatId = msg.chat.id;
     const name = msg.from.first_name || msg.from.username || "Unknown User";
 
-    console.log(`\n[Telegram] Message from ${name} (${chatId}): ${msg.text}`);
+    console.log(`\n--- [Telegram] New Message from ${name} (${chatId}) ---`);
+    console.log(`[Message] "${msg.text || '[Non-text message]'}"`);
 
-    if (!msg.text) return;
+    if (!msg.text) {
+        console.log(`[Info] Skipping processing: No text content in message.`);
+        return;
+    }
 
-    // Authorization check
-    // if (allowedChats.length > 0 && !allowedChats.includes(chatId.toString())) {
-    //     console.warn(`[Auth] Unauthorized access attempt from ${name} (${chatId})`);
-    //     return;
-    // }
+    // Authorization check omitted as per existing code...
 
     bot.sendChatAction(chatId, 'typing').catch(() => {});
 
     try {
+        console.log(`[Step 1] Retrieving chat history...`);
+        // Get or create chat history for this chat
+        if (!chatHistories.has(chatId)) {
+            console.log(`[History] Creating new history for chatId: ${chatId}`);
+            chatHistories.set(chatId, []);
+        }
+        const history = chatHistories.get(chatId);
+        console.log(`[History] Current history length: ${history.length}`);
 
-        const result = await processMessage(msg.text);
+        console.log(`[Step 2] Passing message to AI Agent...`);
+        const result = await processMessage(msg.text, history);
 
-        console.log("Agent response:", result);
-
-        if (!result) return;
+        console.log(`[Step 3] Agent processing finished. Result type: ${typeof result}`);
+        if (!result) {
+            console.warn(`[Warning] Agent returned an empty result.`);
+            return;
+        }
 
         /* -------- SEND TEXT -------- */
 
         if (result.text) {
+            console.log(`[Telegram] Sending text response (length: ${result.text.length})...`);
             await bot.sendMessage(chatId, result.text);
-            console.log("[Sent] Text response");
+            console.log("[Telegram] Text response sent successfully.");
         }
 
         /* -------- SEND FILES -------- */
 
         if (Array.isArray(result.files) && result.files.length > 0) {
-
+            console.log(`[Telegram] Sending ${result.files.length} file(s)...`);
             for (const file of result.files) {
                 await sendFileToTelegram(bot, chatId, file);
             }
-
+            console.log("[Telegram] All files sent.");
         }
 
-        /* -------- SEND INFO -------- */
+        /* -------- UPDATE CHAT HISTORY -------- */
 
-        // if (result.info) {
+        console.log(`[Step 4] Updating chat history...`);
+        // Store the user message and bot response in history
+        history.push({ role: 'user', text: msg.text });
+        if (result.text) {
+            history.push({ role: 'bot', text: result.text });
+        }
 
-        //     const infoText =
-        //         typeof result.info === "string"
-        //             ? result.info
-        //             : JSON.stringify(result.info, null, 2);
-
-        //     await bot.sendMessage(chatId, `ℹ️ Info:\n${infoText}`);
-
-        //     console.log("[Sent] Info message");
-
-        // }
+        // Keep only the last 20 messages to avoid memory bloat
+        while (history.length > 20) {
+            history.shift();
+        }
+        console.log(`[History] Updated. New length: ${history.length}`);
+        console.log(`--- [Telegram] Message handling completed for ${chatId} ---\n`);
 
     } catch (error) {
-
-        console.error("[Error] Failed to process message:", error);
+        console.error(`[CRITICAL ERROR] Failed to handle message for ${chatId}:`, error);
 
         bot.sendMessage(
             chatId,

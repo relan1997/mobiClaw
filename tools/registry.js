@@ -51,13 +51,13 @@ const toolSchemas = [
     },
     {
       name: "listFiles",
-      description: "Lists the files and folders inside a specific directory on the user's local machine.",
+      description: "Searches for a folder by name or sub-path on the user's Windows machine. If multiple matching folders are found, returns the list of paths. If exactly one folder is found, lists its contents.",
       parameters: {
         type: "OBJECT",
         properties: {
           directoryPath: {
             type: "STRING",
-            description: "The absolute path of the directory to list (e.g., 'C:\\Users\\John\\Documents' or 'D:\\')."
+            description: "The folder name or sub-path to search for (e.g., 'Documents', 'harshal/Documents', 'Projects/myApp')."
           }
         },
         required: ["directoryPath"]

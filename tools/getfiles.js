@@ -76,27 +76,89 @@ function isPathSensitive(requestedPath) {
 // ==========================================
 
 /**
- * Lists the contents of a directory.
- * @param {string} directoryPath The path to list.
- * @param {boolean} userConfirmed Whether the user explicitly approved access.
- * @returns {string|object} The contents, or a confirmation request for the LLM.
+ * Searches for folders matching a name or sub-path across all Windows drives.
+ * If multiple matching folders are found, returns the list of paths.
+ * If exactly one match is found, returns the contents of that folder.
+ * @param {string} folderName The folder name or sub-path to search for (e.g., 'Documents', 'harshal/Documents').
+ * @returns {Promise<string>} The search results or folder contents.
  */
-function listFiles(directoryPath) {
+async function listFiles(folderName) {
     try {
-        const fullPath = path.resolve(directoryPath || os.homedir());
-
-        if (isPathSensitive(fullPath)) {
-            return `Access Denied: The directory '${fullPath}' is marked as sensitive. Privacy concerns prevent access.`;
+        if (!folderName || folderName.trim() === '') {
+            return 'Error: Please provide a folder name or sub-path to search for.';
         }
 
-        if (!fs.existsSync(fullPath)) return `Directory not found: ${fullPath}`;
+        // Normalize the input: strip leading/trailing slashes, convert backslashes to forward slashes
+        const normalizedInput = folderName.trim().replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
 
-        const files = fs.readdirSync(fullPath);
-        if (files.length === 0) return `Directory is empty: ${fullPath}`;
-        
-        return `Contents of ${fullPath}:\n${files.join('\n')}`;
+        const rootsToSearch = getSystemRoots();
+        let allFoundPaths = [];
+
+        const blockedRootFolders = [
+            'windows', 'program files', 'program files (x86)', 'programdata',
+            'system volume information', '$recycle.bin', 'documents and settings',
+            'recovery', 'perflogs', 'config.msi'
+        ];
+
+        for (const root of rootsToSearch) {
+            let safeBase = root.replace(/\\/g, '/').replace(/\/$/, '');
+            if (safeBase.length === 2 && safeBase[1] === ':') safeBase += '/';
+
+            // Build search pattern: match any path ending with the normalized input
+            let patternsToSearch = [];
+
+            try {
+                if (safeBase.endsWith(':/') || safeBase === '/') {
+                    const topLevelItems = fs.readdirSync(safeBase, { withFileTypes: true });
+                    for (const item of topLevelItems) {
+                        if (item.isDirectory()) {
+                            if (!blockedRootFolders.includes(item.name.toLowerCase())) {
+                                patternsToSearch.push(`${safeBase}${item.name}/**/${normalizedInput}`);
+                            }
+                        }
+                    }
+                } else {
+                    patternsToSearch.push(`${safeBase}/**/${normalizedInput}`);
+                }
+            } catch (fsErr) {
+                patternsToSearch.push(`${safeBase}/**/${normalizedInput}`);
+            }
+
+            console.log(`[listFiles] Searching ${patternsToSearch.length} patterns for '${normalizedInput}'...`);
+
+            const entries = await fg(patternsToSearch, {
+                dot: false,
+                ignore: GLOBAL_IGNORED_PATTERNS,
+                caseSensitiveMatch: false,
+                suppressErrors: true,
+                absolute: true,
+                onlyDirectories: true
+            });
+
+            allFoundPaths.push(...entries);
+        }
+
+        // Filter out sensitive paths
+        const safePaths = allFoundPaths
+            .map(p => path.normalize(p))
+            .filter(p => !isPathSensitive(p));
+
+        if (safePaths.length === 0) {
+            return `No folders found matching '${normalizedInput}'.`;
+        }
+
+        // Single match: return the contents of that folder
+        if (safePaths.length === 1) {
+            const folderPath = safePaths[0];
+            const files = fs.readdirSync(folderPath);
+            if (files.length === 0) return `Directory is empty: ${folderPath}`;
+            return `Contents of ${folderPath}:\n${files.join('\n')}`;
+        }
+
+        // Multiple matches: return the list of folder paths
+        return `Found ${safePaths.length} folders matching '${normalizedInput}':\n${safePaths.join('\n')}`;
     } catch (err) {
-        return `Failed to list files: ${err.message}`;
+        return `Failed to search for folders: ${err.message}`;
     }
 }
 

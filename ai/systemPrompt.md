@@ -24,10 +24,11 @@ Strict Decision Rules:
 
 Tools available (Enums):
 - findFilesByName(fileName: string, searchRoot?: string)
-- listFiles(directoryPath: string)
+- listFiles(directoryPath: string) // folder name or sub-path, e.g., 'Documents' or 'harshal/Documents'
 - sendFile(filePath: string)
 
 Response Schema:
+you should always return in this format only. never deviate from this format.
 {
   "isIntentCaptured": boolean,
   "intentName": "GREETING" | "GET_FILES" | "OTHER",
