@@ -65,9 +65,14 @@ async function processMessage(userMessage, chatHistory = []) {
         // tool calling which will help to fetch files, text or both
 
         const parts = response?.candidates?.[0]?.content?.parts || [];
+        
+        // Log the text parts explicitly (this is where the structured JSON resides)
+        const rawTextResponse = parts.filter(p => p.text).map(p => p.text).join('\n');
+        if (rawTextResponse) {
+            console.log(`[Step 1] LLM Structured Response (Text Part):\n${rawTextResponse}`);
+        }
+
         const functionCalls = parts
-            .filter(p => p.functionCall)
-            .map(p => p.functionCall);
 
         console.log(`[Step 2] Tools to execute: ${functionCalls.length}`);
 
@@ -121,7 +126,7 @@ async function processMessage(userMessage, chatHistory = []) {
             const textParts = parts.filter(p => p.text).map(p => p.text).join('\n');
             if (textParts) {
                 toolText = textParts;
-                console.log(`[Step 2] Direct text response found: "${toolText.substring(0, 50)}..."`);
+                console.log(`[Step 2] Direct text response found: "${toolText}"`);
             }
         }
 
@@ -150,6 +155,7 @@ async function processMessage(userMessage, chatHistory = []) {
 
         const finalFriendlyText = res?.candidates?.[0]?.content?.parts?.[0]?.text || toolText;
         console.log(`[Step 3] Final response ready (length: ${finalFriendlyText.length})`);
+        console.log(`[Step 3] Final Friendly Text: "${finalFriendlyText}"`);
 
         //---------------------------------------------------------
 
