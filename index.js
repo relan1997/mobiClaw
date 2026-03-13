@@ -1,65 +1,112 @@
 require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
+const fs = require("fs");
+
 const { processMessage } = require('./ai/agent');
 
 const token = process.env.BOT_TOKEN;
 const allowedChatsStr = process.env.ALLOWED_CHAT_IDS || '';
-// Parse comma-separated chat IDs if provided in .env
-const allowedChats = allowedChatsStr.split(',').map(id => id.trim()).filter(id => id.length > 0);
+
+const allowedChats = allowedChatsStr
+    .split(',')
+    .map(id => id.trim())
+    .filter(id => id.length > 0);
 
 if (!token) {
     console.error("Error: BOT_TOKEN is not set in the .env file.");
     process.exit(1);
 }
 
-const bot = new TelegramBot(token, {polling: true});
+const bot = new TelegramBot(token, { polling: true });
+
+/* ---------------- FILE SENDER ---------------- */
+
+async function sendFileToTelegram(bot, chatId, fileInfo) {
+
+    if (!fileInfo || !fileInfo.__isFileResponse) return;
+
+    const stream = fs.createReadStream(fileInfo.filePath);
+
+    await bot.sendDocument(chatId, stream, {
+        caption: `📁 File: ${fileInfo.fileName}`
+    });
+
+    console.log(`[Sent] File: ${fileInfo.fileName}`);
+
+    if (fileInfo.__isTempFile) {
+        fs.unlinkSync(fileInfo.filePath);
+    }
+}
+
+/* ---------------- MAIN MESSAGE HANDLER ---------------- */
 
 bot.on('message', async (msg) => {
-    // console.log("msg is : ",msg);
+
     const chatId = msg.chat.id;
     const name = msg.from.first_name || msg.from.username || "Unknown User";
 
     console.log(`\n[Telegram] Message from ${name} (${chatId}): ${msg.text}`);
 
-    // await bot.sendMessage(chatId, "Hello");
-    // console.log(`[Sent] Reply successfully sent to Telegram.`);
-
-    // return;
-
-    // Authorization Check: Only allow listed chat IDs (if list is not empty)
-    // if (allowedChats.length > 0 && !allowedChats.includes(chatId.toString())) {
-    //     console.warn(`[Auth] Unauthorized access attempt from ${name} (chatId: ${chatId})`);
-    //     return;
-    // }
-    
     if (!msg.text) return;
 
-    // Show 'typing...' status to the user
+    // Authorization check
+    // if (allowedChats.length > 0 && !allowedChats.includes(chatId.toString())) {
+    //     console.warn(`[Auth] Unauthorized access attempt from ${name} (${chatId})`);
+    //     return;
+    // }
+
     bot.sendChatAction(chatId, 'typing').catch(() => {});
 
     try {
+
         const result = await processMessage(msg.text);
 
-        if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object' && result[0].__isFileResponse) {
-            // Check if AI requested to send multiple files
-            for (const fileObj of result) {
-                await bot.sendDocument(chatId, fileObj.filePath);
-                console.log(`[Sent] File successfully sent: ${fileObj.filePath}`);
-                if (fileObj.__isTempFile) require('fs').unlinkSync(fileObj.filePath);
-            }
-        } else if (typeof result === 'object' && result.__isFileResponse) {
-            // Legacy single object fallback
-            await bot.sendDocument(chatId, result.filePath);
-            console.log(`[Sent] File successfully sent: ${result.filePath}`);
-            if (result.__isTempFile) require('fs').unlinkSync(result.filePath);
-        } else {
-            await bot.sendMessage(chatId, result);
-            console.log(`[Sent] Reply successfully sent to Telegram.`);
+        console.log("Agent response:", result);
+
+        if (!result) return;
+
+        /* -------- SEND TEXT -------- */
+
+        if (result.text) {
+            await bot.sendMessage(chatId, result.text);
+            console.log("[Sent] Text response");
         }
+
+        /* -------- SEND FILES -------- */
+
+        if (Array.isArray(result.files) && result.files.length > 0) {
+
+            for (const file of result.files) {
+                await sendFileToTelegram(bot, chatId, file);
+            }
+
+        }
+
+        /* -------- SEND INFO -------- */
+
+        // if (result.info) {
+
+        //     const infoText =
+        //         typeof result.info === "string"
+        //             ? result.info
+        //             : JSON.stringify(result.info, null, 2);
+
+        //     await bot.sendMessage(chatId, `ℹ️ Info:\n${infoText}`);
+
+        //     console.log("[Sent] Info message");
+
+        // }
+
     } catch (error) {
-        console.error(`[Error] Failed to process/send message:`, error);
-        bot.sendMessage(chatId, `❌ System Error: ${error.message}`).catch(console.error);
+
+        console.error("[Error] Failed to process message:", error);
+
+        bot.sendMessage(
+            chatId,
+            `❌ System Error:\n${error.message}`
+        ).catch(console.error);
     }
+
 });
 
 console.log("MobiClaw bot backend is running...");
