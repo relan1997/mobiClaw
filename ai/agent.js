@@ -14,8 +14,8 @@ const systemPrompt = fs.readFileSync(path.join(__dirname, 'systemPrompt.md'), 'u
 // The system prompt contains placeholders like ${FILE_SYSTEM_SKILL_CONTENT}
 const systemInstruction = systemPrompt
     .replace('${FILE_SYSTEM_SKILL_CONTENT}', fileSystemSkill)
-    // Add other replacements if needed, but for now we focus on what was there
-    .replace('${GREETING_SKILL_CONTENT}', '') // Placeholder cleanup
+    .replace('${TOOL_SCHEMAS}', JSON.stringify(toolSchemas, null, 2))
+    .replace('${GREETING_SKILL_CONTENT}', '') 
     .replace('${UNHANDLED_QUERY_SKILL_CONTENT}', ''); 
 
 

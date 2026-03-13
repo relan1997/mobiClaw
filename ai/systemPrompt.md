@@ -29,14 +29,13 @@ Strict Decision Rules:
 - SINGLE ACTION ONLY: Capture ONLY the first unique item if multiple are mentioned.
 - 2-STEP VALIDATION: Check for required arguments (Absolute Paths vs FileName) as defined in the GET_FILES Protocol.
 
-Tools available (Enums):
-- findFilesByName(fileName: string, searchRoot?: string)
-- listFiles(directoryPath: string) // folder name or sub-path, e.g., 'Documents' or 'harshal/Documents'
-- sendFile(filePath: string)
+Tools available (JSON Schemas):
+${TOOL_SCHEMAS}
 
 Response Schema:
 you should always return in this format only. never deviate from this format.
 {
+  "chat_reasoning":string,
   "isIntentCaptured": boolean,
   "intentName": "GREETING" | "GET_FILES" | "OTHER",
   "isRequirementsNeeded": boolean,
@@ -50,6 +49,7 @@ you should always return in this format only. never deviate from this format.
 }
 
 **Field Explanations:**
+- `chat_reasoning`: A 50-60 word internal reasoning explaining your thought process, what you understood from the user's message, and what steps you will take next.
 - `isIntentCaptured`: Set to `true` if you successfully identified what the user wants based on the protocols.
 - `intentName`: The specific category of the request (`GREETING`, `GET_FILES`, or `OTHER`).
 - `isRequirementsNeeded`: Set to `true` if mandatory arguments (like a file name or folder path) are missing or if you need the user to clarify if an item is a file or a folder.
