@@ -9,20 +9,15 @@ const fs = require('fs');
 const path = require('path');
 const fileSystemSkill = fs.readFileSync(path.join(__dirname, 'skills', 'fileSystemSkill.md'), 'utf-8');
 
-const systemInstruction = `
-You are a highly capable AI assistant that controls my Windows laptop.
-You have access to several tools. You must use them to accomplish the user's tasks.
-When asked to open an app, use 'openApplication'.
-When asked about system stats, use 'getSystemStats'.
-When asked to list files, use 'listFiles'.
-When asked to send or get a file or folder, use 'sendFile'.
-When asked to run a command, use 'executeScript'.
+const systemPrompt = fs.readFileSync(path.join(__dirname, 'systemPrompt.md'), 'utf-8');
 
-[CRITICAL BATCH INSTRUCTION]
-If the user asks for multiple distinct actions at once (e.g. "open notepad and find my resume"), you MUST call the corresponding tools in parallel independently in the same response. Do not wait for one to finish before calling the other.
+// The system prompt contains placeholders like ${FILE_SYSTEM_SKILL_CONTENT}
+const systemInstruction = systemPrompt
+    .replace('${FILE_SYSTEM_SKILL_CONTENT}', fileSystemSkill)
+    // Add other replacements if needed, but for now we focus on what was there
+    .replace('${GREETING_SKILL_CONTENT}', '') // Placeholder cleanup
+    .replace('${UNHANDLED_QUERY_SKILL_CONTENT}', ''); 
 
-${fileSystemSkill}
-`;
 
 /**
  * Processes a natural language message from the user, calls appropriate tools,
@@ -34,7 +29,7 @@ ${fileSystemSkill}
 async function processMessage(userMessage, chatHistory = []) {
     console.log(`\n--- [Agent] Starting processMessage ---`);
     console.log(`[Input] User: "${userMessage}" | History Size: ${chatHistory.length}`);
-    
+
     try {
         // Format chat history as "user: ... / bot: ..." for context
         let historyText = '';
@@ -50,12 +45,12 @@ async function processMessage(userMessage, chatHistory = []) {
             : userMessage;
 
         let fullContents = [{ role: 'user', parts: [{ text: messageWithHistory }] }];
-        
+
         console.log(`[Step 1] Requesting Tool Selection from Gemini...`);
         // response will be:
         // which tools to call and what arguments to pass to them
         let response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             contents: fullContents,
             config: {
                 systemInstruction: systemInstruction,
@@ -134,10 +129,10 @@ async function processMessage(userMessage, chatHistory = []) {
 
         // gemini 2 calling - sending text for refurbishing the response
         // which will send res
-        
+
         console.log(`[Step 3] Requesting Response Refurbishing...`);
         let res = await ai.models.generateContent({
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash',
             contents: [
                 {
                     role: 'user',
