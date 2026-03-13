@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { GoogleGenAI } = require('@google/genai');
 const { toolsMapping, toolSchemas } = require('../tools/registry');
 
@@ -31,95 +32,111 @@ ${fileSystemSkill}
  */
 async function processMessage(userMessage) {
     try {
-        // console.log("userMessage is : ",userMessage);
-        const response = await ai.models.generateContent({
+        let fullContents = [{ role: 'user', parts: [{ text: userMessage }] }];
+        
+        // response will be:
+        // which tools to call and what arguments to pass to them
+        let response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: userMessage,
+            contents: fullContents,
             config: {
                 systemInstruction: systemInstruction,
                 tools: [{ functionDeclarations: toolSchemas }]
             }
         });
 
-        // Extract all function calls from the parts array
-        const parts = response.candidates && response.candidates[0] && response.candidates[0].content ? response.candidates[0].content.parts : [];
+        console.log("gemini first response is : ", response);
+
+        //--------------------------------------------------------
+
+        // tool calling which will help to fetch files, text or both
+
+        const parts = response?.candidates?.[0]?.content?.parts || [];
+
         const functionCalls = parts
-            .filter(part => part.functionCall)
-            .map(part => part.functionCall);
+            .filter(p => p.functionCall)
+            .map(p => p.functionCall);
 
-        // Check if the AI decided to call one or more tools
-        if (functionCalls.length > 0) {
-            
-            console.log(`[AI] Intercepted ${functionCalls.length} parallel tool request(s).`);
+        let collectedFiles = [];
+        let toolText = "";
 
-            const functionResponses = [];
-            const filesToReturn = [];
+        for (const call of functionCalls) {
+            const functionName = call.name;
+            const args = call.args || {};
 
-            // Execute all requested tools in parallel
-            await Promise.all(functionCalls.map(async (call) => {
-                const functionName = call.name;
-                const args = call.args;
+            console.log(`[AI] Executing tool: ${functionName}`, args);
 
-                console.log(`[AI] -> Executing: ${functionName}`, args);
+            let result;
 
-                if (toolsMapping[functionName]) {
-                    let toolResult;
-                    try {
-                        const argValues = Object.keys(toolSchemas.find(s => s.name === functionName).parameters.properties)
-                            .map(key => args[key] !== undefined ? args[key] : undefined);
-                        toolResult = await toolsMapping[functionName](...argValues);
-                    } catch (toolErr) {
-                        toolResult = `Tool execution failed: ${toolErr.message}`;
-                    }
-
-                    // If a tool requests a direct file upload, capture it.
-                    if (typeof toolResult === 'object' && toolResult.__isFileResponse) {
-                        filesToReturn.push(toolResult);
-                    }
-
-                    // Store the result to send back to the AI
-                    functionResponses.push({
-                        functionResponse: {
-                            name: functionName,
-                            response: { result: toolResult }
-                        }
-                    });
-                } else {
-                    functionResponses.push({
-                        functionResponse: {
-                            name: functionName,
-                            response: { result: `Error: AI requested unknown tool '${functionName}'` }
-                        }
-                    });
+            try {
+                if (!toolsMapping[functionName]) {
+                    throw new Error(`Unknown tool '${functionName}'`);
                 }
-            }));
 
-            // If any tools explicitly asked to send physical files, we short-circuit and return the array of files to index.js
-            if (filesToReturn.length > 0) {
-                return filesToReturn;
+                result = await toolsMapping[functionName](...Object.values(args));
+            } catch (err) {
+                result = `Tool execution failed: ${err.message}`;
             }
 
-            // Call Gemini again with ALL the accumulated tool results
-            const finalParts = [
-                { text: userMessage },
-                ...functionCalls.map(c => ({ functionCall: c })),
-                ...functionResponses
-            ];
+            // Collect files
+            if (result?.__isFileResponse) {
+                collectedFiles.push(result);
+            }
 
-            const finalResponse = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: [
-                    { role: 'user', parts: [{ text: userMessage }] }, // Original Prompt
-                    { role: 'model', parts: finalParts.slice(1, 1 + functionCalls.length) }, // The AI's tool requests
-                    { role: 'user', parts: finalParts.slice(1 + functionCalls.length) } // Our execution answers
-                ],
-                config: { systemInstruction }
-            });
+            // Collect text
+            if (typeof result === "string") {
+                toolText += result;
+            }
 
-            return finalResponse.text;
+            if (result?.text) {
+                toolText += "\n" + result.text;
+            }
+
+            if (result?.files) {
+                collectedFiles.push(...result.files);
+            }
         }
 
-        return response.text;
+        console.log("tool text is : ", toolText);
+        // console.log("collected files is : ", collectedFiles);
+
+        //--------------------------------------------------
+
+        // gemini 2 calling - sending text for refurbishing the response
+        // which will send res
+
+        let res = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+                {
+                    role: 'user',
+                    parts: [
+                        {
+                            text: `Rewrite the following system output in a friendly way for a Telegram user.
+                            
+                            Output:
+                            ${toolText}`
+                        }
+                    ]
+                }
+            ],
+            // config: {
+            //     systemInstruction: systemInstruction,
+            // }
+        });
+
+        //---------------------------------------------------------
+
+        // now res + text will be send from here 
+        // in format :
+        // {text: "text", files: [full path of file1, full path of file2, ...]}
+
+        return {
+            text: toolText,
+            files: collectedFiles   // this files should be an array of full paths of files to be sent
+        };
+        
+
     } catch (error) {
         console.error('[AI] Error in processMessage:', error);
         return `Sorry, I encountered an AI error: ${error.message}`;
