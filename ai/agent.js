@@ -68,16 +68,44 @@ async function processMessage(userMessage, chatHistory = []) {
         
         // Log the text parts explicitly (this is where the structured JSON resides)
         const rawTextResponse = parts.filter(p => p.text).map(p => p.text).join('\n');
+        
+        let jsonResponse = null;
+        let toolText = "";
+
         if (rawTextResponse) {
-            console.log(`[Step 1] LLM Structured Response (Text Part):\n${rawTextResponse}`);
+            console.log(`[Step 1] LLM Raw Response (Text Part):\n${rawTextResponse}`);
+            try {
+                // Clean up backticks if any (sometimes LLMs wrap JSON in ```json ... ```)
+                const cleanedText = rawTextResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                jsonResponse = JSON.parse(cleanedText);
+                console.log("[Step 1] Successfully parsed structured JSON response.");
+                
+                if (jsonResponse.chat_reasoning) {
+                    console.log(`[AI Reasoning] ${jsonResponse.chat_reasoning}`);
+                }
+                
+                if (jsonResponse.user_response_message) {
+                    toolText = jsonResponse.user_response_message;
+                }
+            } catch (e) {
+                console.log("[Step 1] Response is not structured JSON or failed to parse. Using raw text.");
+                toolText = rawTextResponse;
+            }
         }
 
-        const functionCalls = parts
+        let functionCalls = parts
+            .filter(p => p.functionCall)
+            .map(p => p.functionCall);
+
+        // Merge tool calls from the JSON schema if present
+        if (jsonResponse?.toolCallsrequired?.functionCalls) {
+            console.log(`[Step 1] Found ${jsonResponse.toolCallsrequired.functionCalls.length} tool calls in JSON schema.`);
+            functionCalls = [...functionCalls, ...jsonResponse.toolCallsrequired.functionCalls];
+        }
 
         console.log(`[Step 2] Tools to execute: ${functionCalls.length}`);
 
         let collectedFiles = [];
-        let toolText = "";
 
         for (const call of functionCalls) {
             const functionName = call.name;
@@ -106,11 +134,11 @@ async function processMessage(userMessage, chatHistory = []) {
 
             // Collect text
             if (typeof result === "string") {
-                toolText += result;
+                toolText += (toolText ? "\n\n" : "") + result;
             }
 
             if (result?.text) {
-                toolText += "\n" + result.text;
+                toolText += (toolText ? "\n\n" : "") + result.text;
             }
 
             if (result?.files) {
@@ -120,9 +148,9 @@ async function processMessage(userMessage, chatHistory = []) {
 
         if (functionCalls.length > 0) {
             console.log(`[Step 2] All tools executed. Compiled text length: ${toolText.length}`);
-        } else {
-            console.log(`[Step 2] No tools were called. LLM likely provided a direct text response.`);
-            // If no tools were called, Gemini might have put its response in toolText if it was returned as regular text part
+        } else if (!jsonResponse) {
+            console.log(`[Step 2] No tools were called and no JSON response found. Using raw text parts.`);
+            // Fallback for cases where LLM didn't follow the JSON format but sent text anyway
             const textParts = parts.filter(p => p.text).map(p => p.text).join('\n');
             if (textParts) {
                 toolText = textParts;
