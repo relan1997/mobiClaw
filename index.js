@@ -40,9 +40,18 @@ bot.on('message', async (msg) => {
     try {
         const result = await processMessage(msg.text);
 
-        if (typeof result === 'object' && result.__isFileResponse) {
+        if (Array.isArray(result) && result.length > 0 && typeof result[0] === 'object' && result[0].__isFileResponse) {
+            // Check if AI requested to send multiple files
+            for (const fileObj of result) {
+                await bot.sendDocument(chatId, fileObj.filePath);
+                console.log(`[Sent] File successfully sent: ${fileObj.filePath}`);
+                if (fileObj.__isTempFile) require('fs').unlinkSync(fileObj.filePath);
+            }
+        } else if (typeof result === 'object' && result.__isFileResponse) {
+            // Legacy single object fallback
             await bot.sendDocument(chatId, result.filePath);
             console.log(`[Sent] File successfully sent: ${result.filePath}`);
+            if (result.__isTempFile) require('fs').unlinkSync(result.filePath);
         } else {
             await bot.sendMessage(chatId, result);
             console.log(`[Sent] Reply successfully sent to Telegram.`);
