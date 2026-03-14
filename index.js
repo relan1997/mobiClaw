@@ -123,5 +123,5 @@ bot.on('message', async (msg) => {
 
 });
 
-console.log("MobiClaw bot backend is running...");
+console.log("Nudge bot backend is running...");
 console.log("Waiting for messages from authorized Telegram users...");

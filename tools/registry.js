@@ -1,5 +1,5 @@
 const { openApplication } = require('./applications');
-const { listFiles, sendFile, findFilesByName } = require('./getfiles');
+const { listFiles, sendFile, zipFolder, findFilesByName } = require('./getfiles');
 const { executeScript } = require('./runscripts');
 const { getSystemStats } = require('./sysinfo');
 
@@ -7,6 +7,7 @@ const toolsMapping = {
     openApplication,
     listFiles,
     sendFile,
+    zipFolder,
     findFilesByName,
     executeScript,
     getSystemStats
@@ -65,16 +66,30 @@ const toolSchemas = [
     },
     {
       name: "sendFile",
-      description: "Uploads a specific local file or folder from the user's machine to the Telegram chat. If a folder is passed, it will be automatically zipped before sending.",
+      description: "Uploads a specific local file from the user's machine to the Telegram chat. Only works with files, NOT folders. For folders, use zipFolder instead.",
       parameters: {
         type: "OBJECT",
         properties: {
           filePath: {
             type: "STRING",
-            description: "The absolute path of the file or folder to send (e.g., 'C:\\Users\\John\\Documents\\report.pdf' or 'C:\\Users\\John\\Documents')."
+            description: "The absolute path of the file to send (e.g., '/Users/john/Documents/report.pdf')."
           }
         },
         required: ["filePath"]
+      }
+    },
+    {
+      name: "zipFolder",
+      description: "Compresses an entire folder into a .zip file and sends it to the Telegram chat. Only works with directories, NOT individual files. For files, use sendFile instead.",
+      parameters: {
+        type: "OBJECT",
+        properties: {
+          folderPath: {
+            type: "STRING",
+            description: "The absolute path or name of the folder to zip and send (e.g., '/Users/john/Documents/myProject' or 'Downloads/myProject')."
+          }
+        },
+        required: ["folderPath"]
       }
     },
     {
