@@ -1,11 +1,61 @@
-require('dotenv').config();
-const { GoogleGenAI } = require('@google/genai');
+const { GoogleGenAI, SchemaType } = require('@google/genai');
 const { toolsMapping, toolSchemas } = require('../tools/registry');
 
-// Initialize the Google Gen AI SDK. It automatically picks up GEMINI_API_KEY from .env
+// Initialize the Google Gen AI SDK.
 const ai = new GoogleGenAI({});
 
+// Define the response schema for strict JSON output
+const responseSchema = {
+    type: SchemaType.OBJECT,
+    properties: {
+        chat_reasoning: {
+            type: SchemaType.STRING,
+            description: "50-60 word internal reasoning explaining the thought process."
+        },
+        isIntentCaptured: {
+            type: SchemaType.BOOLEAN,
+            description: "True if intent was successfully identified."
+        },
+        intentName: {
+            type: SchemaType.STRING,
+            enum: ["GREETING", "GET_FILES", "OTHER"],
+            description: "The name of the identified intent."
+        },
+        isRequirementsNeeded: {
+            type: SchemaType.BOOLEAN,
+            description: "True if clarification or missing arguments are needed."
+        },
+        list_requirements_needed: {
+            type: SchemaType.OBJECT,
+            description: "Missing field names and their descriptions."
+        },
+        toolCallsrequired: {
+            type: SchemaType.OBJECT,
+            properties: {
+                functionCalls: {
+                    type: SchemaType.ARRAY,
+                    items: {
+                        type: SchemaType.OBJECT,
+                        properties: {
+                            name: { type: SchemaType.STRING },
+                            args: { type: SchemaType.OBJECT }
+                        },
+                        required: ["name", "args"]
+                    }
+                }
+            },
+            required: ["functionCalls"]
+        },
+        user_response_message: {
+            type: SchemaType.STRING,
+            description: "Direct, professional message for the user."
+        }
+    },
+    required: ["chat_reasoning", "isIntentCaptured", "intentName", "isRequirementsNeeded", "toolCallsrequired", "user_response_message"]
+};
+
 const fs = require('fs');
+// ... (rest of imports)
 const path = require('path');
 const fileSystemSkill = fs.readFileSync(path.join(__dirname, 'skills', 'fileSystemSkill.md'), 'utf-8');
 
@@ -55,7 +105,9 @@ async function processMessage(userMessage, chatHistory = []) {
             contents: fullContents,
             config: {
                 systemInstruction: systemInstruction,
-                tools: [{ functionDeclarations: toolSchemas }]
+                tools: [{ functionDeclarations: toolSchemas }],
+                responseMimeType: 'application/json',
+                responseSchema: responseSchema
             }
         });
 
@@ -63,22 +115,16 @@ async function processMessage(userMessage, chatHistory = []) {
 
         //--------------------------------------------------------
 
-        // tool calling which will help to fetch files, text or both
-
         const parts = response?.candidates?.[0]?.content?.parts || [];
-
-        // Log the text parts explicitly (this is where the structured JSON resides)
         const rawTextResponse = parts.filter(p => p.text).map(p => p.text).join('\n');
 
         let jsonResponse = null;
         let toolText = "";
 
         if (rawTextResponse) {
-            console.log(`[Step 1] LLM Raw Response (Text Part):\n${rawTextResponse}`);
+            console.log(`[Step 1] LLM Response (JSON String):\n${rawTextResponse}`);
             try {
-                // Clean up backticks if any (sometimes LLMs wrap JSON in ```json ... ```)
-                const cleanedText = rawTextResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-                jsonResponse = JSON.parse(cleanedText);
+                jsonResponse = JSON.parse(rawTextResponse);
                 console.log("[Step 1] Successfully parsed structured JSON response.");
 
                 if (jsonResponse.chat_reasoning) {
@@ -89,7 +135,7 @@ async function processMessage(userMessage, chatHistory = []) {
                     toolText = jsonResponse.user_response_message;
                 }
             } catch (e) {
-                console.log("[Step 1] Response is not structured JSON or failed to parse. Using raw text.");
+                console.error("[CRITICAL] Response was not valid JSON despite schema enforcement:", e);
                 toolText = rawTextResponse;
             }
         }
@@ -100,7 +146,7 @@ async function processMessage(userMessage, chatHistory = []) {
 
         // Merge tool calls from the JSON schema if present
         if (jsonResponse?.toolCallsrequired?.functionCalls) {
-            console.log(`[Step 1] Found ${jsonResponse.toolCallsrequired.functionCalls.length} tool calls in JSON schema.`);
+            console.log(`[Step 1] Found ${jsonResponse.toolCallsrequired.functionCalls.length} tool calls in JSON.`);
             functionCalls = [...functionCalls, ...jsonResponse.toolCallsrequired.functionCalls];
         }
 
