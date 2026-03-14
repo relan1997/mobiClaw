@@ -3,7 +3,7 @@ const { GoogleGenAI } = require('@google/genai');
 const { toolsMapping, toolSchemas } = require('../tools/registry');
 
 // Initialize the Google Gen AI SDK.
-const ai = new GoogleGenAI({});
+const ai = new GoogleGenAI(process.env.GEMINI_API_KEY);
 
 // Define the response schema for strict JSON output
 const responseSchema = {
@@ -102,7 +102,7 @@ async function processMessage(userMessage, chatHistory = []) {
         // response will be:
         // which tools to call and what arguments to pass to them
         let response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3.1-flash-lite-preview',
             contents: fullContents,
             config: {
                 systemInstruction: systemInstruction,
@@ -154,6 +154,7 @@ async function processMessage(userMessage, chatHistory = []) {
         console.log(`[Step 2] Tools to execute: ${functionCalls.length}`);
 
         let collectedFiles = [];
+        let supplementalRawData = [];
 
         for (const call of functionCalls) {
             const functionName = call.name;
@@ -192,6 +193,10 @@ async function processMessage(userMessage, chatHistory = []) {
             if (result?.files) {
                 collectedFiles.push(...result.files);
             }
+
+            if (result?.__isRawDataResponse && result?.paths) {
+                supplementalRawData.push(result.paths.join('\n'));
+            }
         }
 
         if (functionCalls.length > 0) {
@@ -209,25 +214,35 @@ async function processMessage(userMessage, chatHistory = []) {
         //--------------------------------------------------
 
         // gemini 2 calling - sending text for refurbishing the response
-        // which will send res
+        let finalFriendlyText = toolText;
 
-        console.log(`[Step 3] Requesting Response Refurbishing...`);
-        let res = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [
-                {
-                    role: 'user',
-                    parts: [
-                        {
-                            text: refurbishPrompt.replace('${toolText}', toolText)
-                        }
-                    ]
-                }
-            ]
-        });
+        if (jsonResponse?.intentName === 'GREETING') {
+            console.log(`[Step 3] Skipping Response Refurbishing for GREETING intent.`);
+        } else {
+            console.log(`[Step 3] Requesting Response Refurbishing...`);
+            let res = await ai.models.generateContent({
+                model: 'gemini-3.1-flash-lite-preview',
+                contents: [
+                    {
+                        role: 'user',
+                        parts: [
+                            {
+                                text: refurbishPrompt.replace('${toolText}', toolText)
+                            }
+                        ]
+                    }
+                ]
+            });
 
-        const finalFriendlyText = res?.candidates?.[0]?.content?.parts?.[0]?.text || toolText;
-        console.log(`[Step 3] Final response ready (length: ${finalFriendlyText.length})`);
+            finalFriendlyText = res?.candidates?.[0]?.content?.parts?.[0]?.text || toolText;
+            console.log(`[Step 3] Final response ready (length: ${finalFriendlyText.length})`);
+        }
+
+        // Re-append raw data that bypassed refurbishment
+        if (supplementalRawData.length > 0) {
+            finalFriendlyText += "\n\n" + supplementalRawData.join('\n\n');
+        }
+
         console.log(`[Step 3] Final Friendly Text: "${finalFriendlyText}"`);
 
         //---------------------------------------------------------

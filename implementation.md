@@ -41,5 +41,14 @@ For this project, we will use **Long Polling** via the `node-telegram-bot-api` l
    - Sets up a `readline` interface on `process.stdin` to listen for typed console input.
    - When the Enter key is pressed in the console, sends the entered text back to the tracked `chatId`.
 
-## Requirements (Pending from User)
-- **Telegram Bot Token**: Needed to authenticate with the Telegram API. Obtainable from BotFather on Telegram.
+## macOS Compatibility (New)
+The system will detect the host platform and adjust behavior accordingly:
+1. **Sensitive Directories**: Switch between Windows (`C:\Windows`) and macOS (`/System`, `/Library`, `/var`) paths automatically.
+2. **System Roots**: Support `/` and `/Volumes` on macOS while keeping drive letter support for Windows.
+3. **Zipping**: Use the native `zip -r` command on macOS instead of `tar.exe`.
+4. **Path Normalization**: Ensure consistent handling of path separators across platforms.
+
+## Updated Dependencies
+- `fast-glob`: For efficient file searching.
+- `@google/genai`: For LLM integration.
+- `dotenv`: For environment variable management.
