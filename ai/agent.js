@@ -10,13 +10,14 @@ const path = require('path');
 const fileSystemSkill = fs.readFileSync(path.join(__dirname, 'skills', 'fileSystemSkill.md'), 'utf-8');
 
 const systemPrompt = fs.readFileSync(path.join(__dirname, 'systemPrompt.md'), 'utf-8');
+const refurbishPrompt = fs.readFileSync(path.join(__dirname, 'refurbishPrompt.md'), 'utf-8');
 
 // The system prompt contains placeholders like ${FILE_SYSTEM_SKILL_CONTENT}
 const systemInstruction = systemPrompt
     .replace('${FILE_SYSTEM_SKILL_CONTENT}', fileSystemSkill)
     .replace('${TOOL_SCHEMAS}', JSON.stringify(toolSchemas, null, 2))
-    .replace('${GREETING_SKILL_CONTENT}', '') 
-    .replace('${UNHANDLED_QUERY_SKILL_CONTENT}', ''); 
+    .replace('${GREETING_SKILL_CONTENT}', '')
+    .replace('${UNHANDLED_QUERY_SKILL_CONTENT}', '');
 
 
 /**
@@ -65,10 +66,10 @@ async function processMessage(userMessage, chatHistory = []) {
         // tool calling which will help to fetch files, text or both
 
         const parts = response?.candidates?.[0]?.content?.parts || [];
-        
+
         // Log the text parts explicitly (this is where the structured JSON resides)
         const rawTextResponse = parts.filter(p => p.text).map(p => p.text).join('\n');
-        
+
         let jsonResponse = null;
         let toolText = "";
 
@@ -79,11 +80,11 @@ async function processMessage(userMessage, chatHistory = []) {
                 const cleanedText = rawTextResponse.replace(/```json/g, '').replace(/```/g, '').trim();
                 jsonResponse = JSON.parse(cleanedText);
                 console.log("[Step 1] Successfully parsed structured JSON response.");
-                
+
                 if (jsonResponse.chat_reasoning) {
                     console.log(`[AI Reasoning] ${jsonResponse.chat_reasoning}`);
                 }
-                
+
                 if (jsonResponse.user_response_message) {
                     toolText = jsonResponse.user_response_message;
                 }
@@ -171,10 +172,7 @@ async function processMessage(userMessage, chatHistory = []) {
                     role: 'user',
                     parts: [
                         {
-                            text: `Rewrite the following system output in a friendly way for a Telegram user.
-                            
-                            Output:
-                            ${toolText}`
+                            text: refurbishPrompt.replace('${toolText}', toolText)
                         }
                     ]
                 }
