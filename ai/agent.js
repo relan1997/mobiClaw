@@ -106,9 +106,7 @@ async function processMessage(userMessage, chatHistory = []) {
             contents: fullContents,
             config: {
                 systemInstruction: systemInstruction,
-                tools: [{ functionDeclarations: toolSchemas }],
-                responseMimeType: 'application/json',
-                responseSchema: responseSchema
+                tools: [{ functionDeclarations: toolSchemas }]
             }
         });
 
@@ -123,9 +121,11 @@ async function processMessage(userMessage, chatHistory = []) {
         let toolText = "";
 
         if (rawTextResponse) {
-            console.log(`[Step 1] LLM Response (JSON String):\n${rawTextResponse}`);
+            console.log(`[Step 1] LLM Response (String):\n${rawTextResponse}`);
             try {
-                jsonResponse = JSON.parse(rawTextResponse);
+                // Since we can't use responseMimeType with tools, we must clean backticks manually
+                const cleanedText = rawTextResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+                jsonResponse = JSON.parse(cleanedText);
                 console.log("[Step 1] Successfully parsed structured JSON response.");
 
                 if (jsonResponse.chat_reasoning) {
@@ -136,7 +136,7 @@ async function processMessage(userMessage, chatHistory = []) {
                     toolText = jsonResponse.user_response_message;
                 }
             } catch (e) {
-                console.error("[CRITICAL] Response was not valid JSON despite schema enforcement:", e);
+                console.log("[Step 1] Response is not structured JSON or failed to parse. Using raw text.");
                 toolText = rawTextResponse;
             }
         }
