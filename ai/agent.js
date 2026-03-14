@@ -1,4 +1,5 @@
-const { GoogleGenAI, SchemaType } = require('@google/genai');
+require('dotenv').config();
+const { GoogleGenAI } = require('@google/genai');
 const { toolsMapping, toolSchemas } = require('../tools/registry');
 
 // Initialize the Google Gen AI SDK.
@@ -6,39 +7,39 @@ const ai = new GoogleGenAI({});
 
 // Define the response schema for strict JSON output
 const responseSchema = {
-    type: SchemaType.OBJECT,
+    type: "object",
     properties: {
         chat_reasoning: {
-            type: SchemaType.STRING,
+            type: "string",
             description: "50-60 word internal reasoning explaining the thought process."
         },
         isIntentCaptured: {
-            type: SchemaType.BOOLEAN,
+            type: "boolean",
             description: "True if intent was successfully identified."
         },
         intentName: {
-            type: SchemaType.STRING,
+            type: "string",
             enum: ["GREETING", "GET_FILES", "OTHER"],
             description: "The name of the identified intent."
         },
         isRequirementsNeeded: {
-            type: SchemaType.BOOLEAN,
+            type: "boolean",
             description: "True if clarification or missing arguments are needed."
         },
         list_requirements_needed: {
-            type: SchemaType.OBJECT,
+            type: "object",
             description: "Missing field names and their descriptions."
         },
         toolCallsrequired: {
-            type: SchemaType.OBJECT,
+            type: "object",
             properties: {
                 functionCalls: {
-                    type: SchemaType.ARRAY,
+                    type: "array",
                     items: {
-                        type: SchemaType.OBJECT,
+                        type: "object",
                         properties: {
-                            name: { type: SchemaType.STRING },
-                            args: { type: SchemaType.OBJECT }
+                            name: { type: "string" },
+                            args: { type: "object" }
                         },
                         required: ["name", "args"]
                     }
@@ -47,7 +48,7 @@ const responseSchema = {
             required: ["functionCalls"]
         },
         user_response_message: {
-            type: SchemaType.STRING,
+            type: "string",
             description: "Direct, professional message for the user."
         }
     },
